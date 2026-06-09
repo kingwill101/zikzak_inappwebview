@@ -428,12 +428,15 @@ void in_app_webview_handle_method_call(InAppWebView* self, FlMethodCall* method_
                 double y = fl_value_get_float(yVal);
                 GdkWindow* gdk_window = gtk_widget_get_window(self->web_view);
                 if (gdk_window) {
+                    GdkSeat* seat = gdk_display_get_default_seat(gdk_display_get_default());
+                    GdkDevice* pointer = gdk_seat_get_pointer(seat);
                     if (strcmp(type, "pointerDown") == 0) {
                         GdkEvent* event = gdk_event_new(GDK_BUTTON_PRESS);
                         event->button.window = GDK_WINDOW(g_object_ref(gdk_window));
                         event->button.x = x; event->button.y = y;
                         event->button.button = 1;
                         event->button.time = GDK_CURRENT_TIME;
+                        gdk_event_set_device(event, pointer);
                         gtk_widget_event(self->web_view, event);
                         gdk_event_free(event);
                     } else if (strcmp(type, "pointerUp") == 0) {
@@ -442,6 +445,7 @@ void in_app_webview_handle_method_call(InAppWebView* self, FlMethodCall* method_
                         event->button.x = x; event->button.y = y;
                         event->button.button = 1;
                         event->button.time = GDK_CURRENT_TIME;
+                        gdk_event_set_device(event, pointer);
                         gtk_widget_event(self->web_view, event);
                         gdk_event_free(event);
                     } else if (strcmp(type, "pointerMove") == 0 || strcmp(type, "pointerHover") == 0) {
@@ -449,6 +453,7 @@ void in_app_webview_handle_method_call(InAppWebView* self, FlMethodCall* method_
                         event->motion.window = GDK_WINDOW(g_object_ref(gdk_window));
                         event->motion.x = x; event->motion.y = y;
                         event->motion.time = GDK_CURRENT_TIME;
+                        gdk_event_set_device(event, pointer);
                         gtk_widget_event(self->web_view, event);
                         gdk_event_free(event);
                     }
@@ -473,6 +478,8 @@ void in_app_webview_handle_method_call(InAppWebView* self, FlMethodCall* method_
                 double dy = fl_value_get_float(dyVal);
                 GdkWindow* gdk_window = gtk_widget_get_window(self->web_view);
                 if (gdk_window) {
+                    GdkSeat* seat = gdk_display_get_default_seat(gdk_display_get_default());
+                    GdkDevice* pointer = gdk_seat_get_pointer(seat);
                     GdkEvent* event = gdk_event_new(GDK_SCROLL);
                     event->scroll.window = GDK_WINDOW(g_object_ref(gdk_window));
                     event->scroll.x = x; event->scroll.y = y;
@@ -480,6 +487,7 @@ void in_app_webview_handle_method_call(InAppWebView* self, FlMethodCall* method_
                     event->scroll.delta_x = dx;
                     event->scroll.delta_y = dy;
                     event->scroll.time = GDK_CURRENT_TIME;
+                    gdk_event_set_device(event, pointer);
                     gtk_widget_event(self->web_view, event);
                     gdk_event_free(event);
                 }
@@ -500,6 +508,8 @@ void in_app_webview_handle_method_call(InAppWebView* self, FlMethodCall* method_
                     ? fl_value_get_string(charsVal) : "";
                 GdkWindow* gdk_window = gtk_widget_get_window(self->web_view);
                 if (gdk_window && (strcmp(type, "keydown") == 0 || strcmp(type, "keyrepeat") == 0 || strcmp(type, "keyup") == 0)) {
+                    GdkSeat* seat = gdk_display_get_default_seat(gdk_display_get_default());
+                    GdkDevice* keyboard = gdk_seat_get_keyboard(seat);
                     GdkEventType event_type = (strcmp(type, "keyup") == 0) ? GDK_KEY_RELEASE : GDK_KEY_PRESS;
                     GdkEvent* event = gdk_event_new(event_type);
                     event->key.window = GDK_WINDOW(g_object_ref(gdk_window));
@@ -509,6 +519,7 @@ void in_app_webview_handle_method_call(InAppWebView* self, FlMethodCall* method_
                         event->key.length = strlen(characters);
                         event->key.string = g_strdup(characters);
                     }
+                    gdk_event_set_device(event, keyboard);
                     gtk_widget_event(self->web_view, event);
                     if (event->key.string) g_free(event->key.string);
                     gdk_event_free(event);
