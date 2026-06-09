@@ -426,6 +426,7 @@ void in_app_webview_handle_method_call(InAppWebView* self, FlMethodCall* method_
                 const char* type = fl_value_get_string(typeVal);
                 double x = fl_value_get_float(xVal);
                 double y = fl_value_get_float(yVal);
+                g_message("[inappwebview] pointerEvent: type=%s x=%.0f y=%.0f", type, x, y);
                 GdkWindow* gdk_window = gtk_widget_get_window(self->web_view);
                 if (gdk_window) {
                     GdkSeat* seat = gdk_display_get_default_seat(gdk_display_get_default());
@@ -476,6 +477,7 @@ void in_app_webview_handle_method_call(InAppWebView* self, FlMethodCall* method_
                 double y = fl_value_get_float(yVal);
                 double dx = fl_value_get_float(dxVal);
                 double dy = fl_value_get_float(dyVal);
+                g_message("[inappwebview] scrollEvent: x=%.0f y=%.0f dx=%.0f dy=%.0f", x, y, dx, dy);
                 GdkWindow* gdk_window = gtk_widget_get_window(self->web_view);
                 if (gdk_window) {
                     GdkSeat* seat = gdk_display_get_default_seat(gdk_display_get_default());
@@ -506,6 +508,7 @@ void in_app_webview_handle_method_call(InAppWebView* self, FlMethodCall* method_
                 guint keyval = (guint)fl_value_get_int(keyvalVal);
                 const char* characters = (charsVal && fl_value_get_type(charsVal) == FL_VALUE_TYPE_STRING)
                     ? fl_value_get_string(charsVal) : "";
+                g_message("[inappwebview] keyEvent: type=%s keyval=0x%x", type, keyval);
                 GdkWindow* gdk_window = gtk_widget_get_window(self->web_view);
                 if (gdk_window && (strcmp(type, "keydown") == 0 || strcmp(type, "keyrepeat") == 0 || strcmp(type, "keyup") == 0)) {
                     GdkSeat* seat = gdk_display_get_default_seat(gdk_display_get_default());
