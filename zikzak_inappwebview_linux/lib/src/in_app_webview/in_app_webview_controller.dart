@@ -31,6 +31,8 @@ class LinuxInAppWebViewController extends PlatformInAppWebViewController {
 
   late MethodChannel _channel;
 
+  MethodChannel get channel => _channel;
+
   Future<dynamic> handleMethod(MethodCall call) async {
     final controller = params.webviewParams?.controllerFromPlatform != null
         ? params.webviewParams!.controllerFromPlatform!(this)

@@ -1,6 +1,7 @@
 #include "include/zikzak_inappwebview_linux/in_app_webview.h"
 #include <cstring>
 #include <glib/gstdio.h>
+#include <gdk/gdkkeysyms.h>
 #include <iostream>
 
 struct _InAppWebView {
@@ -387,6 +388,134 @@ void in_app_webview_handle_method_call(InAppWebView* self, FlMethodCall* method_
                                      on_screenshot_ready,
                                      g_object_ref(method_call));
         return;
+    } else if (strcmp(method, "resize") == 0) {
+        if (fl_value_get_type(args) == FL_VALUE_TYPE_MAP) {
+            FlValue* widthVal = fl_value_lookup_string(args, "width");
+            FlValue* heightVal = fl_value_lookup_string(args, "height");
+            if (widthVal && heightVal &&
+                fl_value_get_type(widthVal) == FL_VALUE_TYPE_INT &&
+                fl_value_get_type(heightVal) == FL_VALUE_TYPE_INT) {
+                int width = fl_value_get_int(widthVal);
+                int height = fl_value_get_int(heightVal);
+                if (width > 0 && height > 0) {
+                    gtk_window_resize(GTK_WINDOW(self->window), width, height);
+                    gtk_widget_set_size_request(self->web_view, width, height);
+                    if (width != self->width || height != self->height) {
+                        g_free(self->buffer);
+                        self->width = width;
+                        self->height = height;
+                        self->buffer = (uint8_t*)g_malloc0(width * height * 4);
+                    }
+                    update_texture(self);
+                }
+            }
+        }
+        fl_method_call_respond(method_call, FL_METHOD_RESPONSE(fl_method_success_response_new(fl_value_new_bool(true))), nullptr);
+    } else if (strcmp(method, "focus") == 0) {
+        gtk_widget_grab_focus(self->web_view);
+        fl_method_call_respond(method_call, FL_METHOD_RESPONSE(fl_method_success_response_new(fl_value_new_bool(true))), nullptr);
+    } else if (strcmp(method, "pointerEvent") == 0) {
+        if (fl_value_get_type(args) == FL_VALUE_TYPE_MAP) {
+            FlValue* typeVal = fl_value_lookup_string(args, "type");
+            FlValue* xVal = fl_value_lookup_string(args, "x");
+            FlValue* yVal = fl_value_lookup_string(args, "y");
+            if (typeVal && xVal && yVal &&
+                fl_value_get_type(typeVal) == FL_VALUE_TYPE_STRING &&
+                fl_value_get_type(xVal) == FL_VALUE_TYPE_DOUBLE &&
+                fl_value_get_type(yVal) == FL_VALUE_TYPE_DOUBLE) {
+                const char* type = fl_value_get_string(typeVal);
+                double x = fl_value_get_double(xVal);
+                double y = fl_value_get_double(yVal);
+                GdkWindow* gdk_window = gtk_widget_get_window(self->web_view);
+                if (gdk_window) {
+                    if (strcmp(type, "pointerDown") == 0) {
+                        GdkEvent* event = gdk_event_new(GDK_BUTTON_PRESS);
+                        event->button.window = GDK_WINDOW(g_object_ref(gdk_window));
+                        event->button.x = x; event->button.y = y;
+                        event->button.button = 1;
+                        event->button.time = GDK_CURRENT_TIME;
+                        gtk_widget_event(self->web_view, event);
+                        gdk_event_free(event);
+                    } else if (strcmp(type, "pointerUp") == 0) {
+                        GdkEvent* event = gdk_event_new(GDK_BUTTON_RELEASE);
+                        event->button.window = GDK_WINDOW(g_object_ref(gdk_window));
+                        event->button.x = x; event->button.y = y;
+                        event->button.button = 1;
+                        event->button.time = GDK_CURRENT_TIME;
+                        gtk_widget_event(self->web_view, event);
+                        gdk_event_free(event);
+                    } else if (strcmp(type, "pointerMove") == 0 || strcmp(type, "pointerHover") == 0) {
+                        GdkEvent* event = gdk_event_new(GDK_MOTION_NOTIFY);
+                        event->motion.window = GDK_WINDOW(g_object_ref(gdk_window));
+                        event->motion.x = x; event->motion.y = y;
+                        event->motion.time = GDK_CURRENT_TIME;
+                        gtk_widget_event(self->web_view, event);
+                        gdk_event_free(event);
+                    }
+                }
+            }
+        }
+        fl_method_call_respond(method_call, FL_METHOD_RESPONSE(fl_method_success_response_new(fl_value_new_bool(true))), nullptr);
+    } else if (strcmp(method, "scrollEvent") == 0) {
+        if (fl_value_get_type(args) == FL_VALUE_TYPE_MAP) {
+            FlValue* xVal = fl_value_lookup_string(args, "x");
+            FlValue* yVal = fl_value_lookup_string(args, "y");
+            FlValue* dxVal = fl_value_lookup_string(args, "deltaX");
+            FlValue* dyVal = fl_value_lookup_string(args, "deltaY");
+            if (xVal && yVal && dxVal && dyVal &&
+                fl_value_get_type(xVal) == FL_VALUE_TYPE_DOUBLE &&
+                fl_value_get_type(yVal) == FL_VALUE_TYPE_DOUBLE &&
+                fl_value_get_type(dxVal) == FL_VALUE_TYPE_DOUBLE &&
+                fl_value_get_type(dyVal) == FL_VALUE_TYPE_DOUBLE) {
+                double x = fl_value_get_double(xVal);
+                double y = fl_value_get_double(yVal);
+                double dx = fl_value_get_double(dxVal);
+                double dy = fl_value_get_double(dyVal);
+                GdkWindow* gdk_window = gtk_widget_get_window(self->web_view);
+                if (gdk_window) {
+                    GdkEvent* event = gdk_event_new(GDK_SCROLL);
+                    event->scroll.window = GDK_WINDOW(g_object_ref(gdk_window));
+                    event->scroll.x = x; event->scroll.y = y;
+                    event->scroll.direction = GDK_SCROLL_SMOOTH;
+                    event->scroll.delta_x = dx;
+                    event->scroll.delta_y = dy;
+                    event->scroll.time = GDK_CURRENT_TIME;
+                    gtk_widget_event(self->web_view, event);
+                    gdk_event_free(event);
+                }
+            }
+        }
+        fl_method_call_respond(method_call, FL_METHOD_RESPONSE(fl_method_success_response_new(fl_value_new_bool(true))), nullptr);
+    } else if (strcmp(method, "keyEvent") == 0) {
+        if (fl_value_get_type(args) == FL_VALUE_TYPE_MAP) {
+            FlValue* typeVal = fl_value_lookup_string(args, "type");
+            FlValue* keyvalVal = fl_value_lookup_string(args, "keyval");
+            FlValue* charsVal = fl_value_lookup_string(args, "characters");
+            if (typeVal && keyvalVal &&
+                fl_value_get_type(typeVal) == FL_VALUE_TYPE_STRING &&
+                fl_value_get_type(keyvalVal) == FL_VALUE_TYPE_INT) {
+                const char* type = fl_value_get_string(typeVal);
+                guint keyval = (guint)fl_value_get_int(keyvalVal);
+                const char* characters = (charsVal && fl_value_get_type(charsVal) == FL_VALUE_TYPE_STRING)
+                    ? fl_value_get_string(charsVal) : "";
+                GdkWindow* gdk_window = gtk_widget_get_window(self->web_view);
+                if (gdk_window && (strcmp(type, "keydown") == 0 || strcmp(type, "keyrepeat") == 0 || strcmp(type, "keyup") == 0)) {
+                    GdkEventType event_type = (strcmp(type, "keyup") == 0) ? GDK_KEY_RELEASE : GDK_KEY_PRESS;
+                    GdkEvent* event = gdk_event_new(event_type);
+                    event->key.window = GDK_WINDOW(g_object_ref(gdk_window));
+                    event->key.keyval = keyval;
+                    event->key.time = GDK_CURRENT_TIME;
+                    if (characters[0] != '\0' && (keyval < 0xFF00)) {
+                        event->key.length = strlen(characters);
+                        event->key.string = g_strdup(characters);
+                    }
+                    gtk_widget_event(self->web_view, event);
+                    if (event->key.string) g_free(event->key.string);
+                    gdk_event_free(event);
+                }
+            }
+        }
+        fl_method_call_respond(method_call, FL_METHOD_RESPONSE(fl_method_success_response_new(fl_value_new_bool(true))), nullptr);
     } else {
         fl_method_call_respond(method_call, FL_METHOD_RESPONSE(fl_method_not_implemented_response_new()), nullptr);
     }
