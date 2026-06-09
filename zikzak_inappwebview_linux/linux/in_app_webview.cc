@@ -421,11 +421,11 @@ void in_app_webview_handle_method_call(InAppWebView* self, FlMethodCall* method_
             FlValue* yVal = fl_value_lookup_string(args, "y");
             if (typeVal && xVal && yVal &&
                 fl_value_get_type(typeVal) == FL_VALUE_TYPE_STRING &&
-                fl_value_get_type(xVal) == FL_VALUE_TYPE_DOUBLE &&
-                fl_value_get_type(yVal) == FL_VALUE_TYPE_DOUBLE) {
+                fl_value_get_type(xVal) == FL_VALUE_TYPE_FLOAT &&
+                fl_value_get_type(yVal) == FL_VALUE_TYPE_FLOAT) {
                 const char* type = fl_value_get_string(typeVal);
-                double x = fl_value_get_double(xVal);
-                double y = fl_value_get_double(yVal);
+                double x = fl_value_get_float(xVal);
+                double y = fl_value_get_float(yVal);
                 GdkWindow* gdk_window = gtk_widget_get_window(self->web_view);
                 if (gdk_window) {
                     if (strcmp(type, "pointerDown") == 0) {
@@ -463,14 +463,14 @@ void in_app_webview_handle_method_call(InAppWebView* self, FlMethodCall* method_
             FlValue* dxVal = fl_value_lookup_string(args, "deltaX");
             FlValue* dyVal = fl_value_lookup_string(args, "deltaY");
             if (xVal && yVal && dxVal && dyVal &&
-                fl_value_get_type(xVal) == FL_VALUE_TYPE_DOUBLE &&
-                fl_value_get_type(yVal) == FL_VALUE_TYPE_DOUBLE &&
-                fl_value_get_type(dxVal) == FL_VALUE_TYPE_DOUBLE &&
-                fl_value_get_type(dyVal) == FL_VALUE_TYPE_DOUBLE) {
-                double x = fl_value_get_double(xVal);
-                double y = fl_value_get_double(yVal);
-                double dx = fl_value_get_double(dxVal);
-                double dy = fl_value_get_double(dyVal);
+                fl_value_get_type(xVal) == FL_VALUE_TYPE_FLOAT &&
+                fl_value_get_type(yVal) == FL_VALUE_TYPE_FLOAT &&
+                fl_value_get_type(dxVal) == FL_VALUE_TYPE_FLOAT &&
+                fl_value_get_type(dyVal) == FL_VALUE_TYPE_FLOAT) {
+                double x = fl_value_get_float(xVal);
+                double y = fl_value_get_float(yVal);
+                double dx = fl_value_get_float(dxVal);
+                double dy = fl_value_get_float(dyVal);
                 GdkWindow* gdk_window = gtk_widget_get_window(self->web_view);
                 if (gdk_window) {
                     GdkEvent* event = gdk_event_new(GDK_SCROLL);
