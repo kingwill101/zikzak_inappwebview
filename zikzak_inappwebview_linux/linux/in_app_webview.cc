@@ -9,6 +9,7 @@ struct _InAppWebView {
   char* id;
   FlMethodChannel* channel;
   GtkWidget* web_view;
+  GtkWidget* window;
   int64_t texture_id;
 
   uint8_t* buffer;
@@ -41,11 +42,11 @@ static gboolean in_app_webview_copy_pixels(FlPixelBufferTexture* texture,
 
 static void in_app_webview_dispose(GObject* object) {
   InAppWebView* self = IN_APP_WEBVIEW(object);
-  if (self->web_view) {
-    // gtk_widget_destroy(self->web_view); // WebKitWebView is a GtkWidget
-    // But since we own the ref via g_object_ref_sink, we should unref it.
-    // If it was added to a container, the container would own it.
-    // Here we don't add it to a container, so we own it.
+  if (self->window) {
+    gtk_widget_destroy(self->window);
+    self->window = nullptr;
+    self->web_view = nullptr;
+  } else if (self->web_view) {
     g_object_unref(self->web_view);
     self->web_view = nullptr;
   }
@@ -60,6 +61,9 @@ static void in_app_webview_dispose(GObject* object) {
   if (self->id) {
     g_free(self->id);
     self->id = nullptr;
+  }
+  if (self->registrar) {
+    g_object_unref(self->registrar);
   }
   G_OBJECT_CLASS(in_app_webview_parent_class)->dispose(object);
 }
@@ -141,6 +145,60 @@ static void on_snapshot_ready(GObject* source_object, GAsyncResult* res, gpointe
     g_object_unref(self);
 }
 
+static void on_screenshot_ready(GObject* source_object, GAsyncResult* res, gpointer user_data) {
+    FlMethodCall* method_call = FL_METHOD_CALL(user_data);
+    GError* error = nullptr;
+    WebKitWebView* web_view = WEBKIT_WEB_VIEW(source_object);
+    cairo_surface_t* surface = webkit_web_view_get_snapshot_finish(web_view, res, &error);
+
+    if (!surface) {
+        fl_method_call_respond(method_call, FL_METHOD_RESPONSE(fl_method_success_response_new(fl_value_new_null())), nullptr);
+        if (error) {
+            g_error_free(error);
+        }
+        g_object_unref(method_call);
+        return;
+    }
+
+    cairo_surface_flush(surface);
+
+    guchar* png_data = nullptr;
+    gsize png_size = 0;
+
+    GdkPixbuf* pixbuf = gdk_pixbuf_get_from_surface(
+        surface, 0, 0,
+        cairo_image_surface_get_width(surface),
+        cairo_image_surface_get_height(surface)
+    );
+
+    if (pixbuf) {
+        gchar* buffer = nullptr;
+        gsize buffer_size = 0;
+        gboolean saved = gdk_pixbuf_save_to_buffer(
+            pixbuf, &buffer, &buffer_size, "png", nullptr, nullptr
+        );
+        if (saved && buffer && buffer_size > 0) {
+            png_data = (guchar*)g_malloc(buffer_size);
+            memcpy(png_data, buffer, buffer_size);
+            png_size = buffer_size;
+            g_free(buffer);
+        }
+        g_object_unref(pixbuf);
+    }
+
+    cairo_surface_destroy(surface);
+
+    if (png_data && png_size > 0) {
+        g_autoptr(FlValue) fl_data = fl_value_new_uint8_list(png_data, png_size);
+        fl_method_call_respond(method_call, FL_METHOD_RESPONSE(fl_method_success_response_new(fl_data)), nullptr);
+        g_free(png_data);
+    } else {
+        fl_method_call_respond(method_call, FL_METHOD_RESPONSE(fl_method_success_response_new(fl_value_new_null())), nullptr);
+    }
+
+    g_object_unref(method_call);
+}
+
 static void update_texture(InAppWebView* self) {
     webkit_web_view_get_snapshot(WEBKIT_WEB_VIEW(self->web_view),
                                  WEBKIT_SNAPSHOT_REGION_VISIBLE,
@@ -160,7 +218,7 @@ static void on_load_changed(WebKitWebView* web_view, WebKitLoadEvent load_event,
 
 InAppWebView* in_app_webview_new(FlPluginRegistrar* registrar, const char* id) {
   InAppWebView* self = IN_APP_WEBVIEW(g_object_new(IN_APP_WEBVIEW_TYPE, nullptr));
-  self->registrar = registrar;
+  self->registrar = FL_PLUGIN_REGISTRAR(g_object_ref(registrar));
   self->id = g_strdup(id);
 
   g_autofree gchar* channel_name = g_strdup_printf("dev.zuzu/zikzak_inappwebview_%s", id);
@@ -186,6 +244,15 @@ InAppWebView* in_app_webview_new(FlPluginRegistrar* registrar, const char* id) {
 
   // Set initial size
   gtk_widget_set_size_request(self->web_view, 1280, 720);
+
+  WebKitSettings* webkit_settings = webkit_web_view_get_settings(WEBKIT_WEB_VIEW(self->web_view));
+  webkit_settings_set_hardware_acceleration_policy(
+      webkit_settings, WEBKIT_HARDWARE_ACCELERATION_POLICY_NEVER);
+
+  self->window = gtk_offscreen_window_new();
+  gtk_container_add(GTK_CONTAINER(self->window), self->web_view);
+  gtk_window_set_default_size(GTK_WINDOW(self->window), 1280, 720);
+  gtk_widget_show_all(self->window);
 
   return self;
 }
@@ -245,26 +312,28 @@ void in_app_webview_handle_method_call(InAppWebView* self, FlMethodCall* method_
         g_autoptr(FlValue) result = uri ? fl_value_new_string(uri) : fl_value_new_null();
         fl_method_call_respond(method_call, FL_METHOD_RESPONSE(fl_method_success_response_new(result)), nullptr);
     } else if (strcmp(method, "getHtml") == 0) {
-        webkit_web_view_run_javascript(WEBKIT_WEB_VIEW(self->web_view),
+        webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(self->web_view),
             "document.documentElement.outerHTML",
+            -1,
+            nullptr,
+            nullptr,
             nullptr,
             [](GObject* object, GAsyncResult* result, gpointer user_data) {
                 FlMethodCall* method_call = FL_METHOD_CALL(user_data);
                 GError* error = nullptr;
-                WebKitJavascriptResult* js_result = webkit_web_view_run_javascript_finish(WEBKIT_WEB_VIEW(object), result, &error);
+                JSCValue* js_value = webkit_web_view_evaluate_javascript_finish(WEBKIT_WEB_VIEW(object), result, &error);
 
-                if (!js_result) {
+                if (!js_value) {
                     fl_method_call_respond(method_call, FL_METHOD_RESPONSE(fl_method_error_response_new("error", error->message, nullptr)), nullptr);
                     g_error_free(error);
                 } else {
-                    JSCValue* value = webkit_javascript_result_get_js_value(js_result);
-                    if (jsc_value_is_string(value)) {
-                        g_autofree gchar* str_value = jsc_value_to_string(value);
+                    if (jsc_value_is_string(js_value)) {
+                        g_autofree gchar* str_value = jsc_value_to_string(js_value);
                         fl_method_call_respond(method_call, FL_METHOD_RESPONSE(fl_method_success_response_new(fl_value_new_string(str_value))), nullptr);
                     } else {
                         fl_method_call_respond(method_call, FL_METHOD_RESPONSE(fl_method_success_response_new(fl_value_new_null())), nullptr);
                     }
-                    webkit_javascript_result_unref(js_result);
+                    g_object_unref(js_value);
                 }
                 g_object_unref(method_call);
             },
@@ -311,55 +380,12 @@ void in_app_webview_handle_method_call(InAppWebView* self, FlMethodCall* method_
         g_free(uri);
         return;
     } else if (strcmp(method, "takeScreenshot") == 0) {
-        cairo_surface_t* surface = webkit_web_view_get_snapshot(
-            WEBKIT_WEB_VIEW(self->web_view),
-            WEBKIT_SNAPSHOT_REGION_VISIBLE,
-            WEBKIT_SNAPSHOT_OPTIONS_NONE,
-            nullptr,
-            nullptr
-        );
-
-        if (!surface) {
-            fl_method_call_respond(method_call, FL_METHOD_RESPONSE(fl_method_success_response_new(fl_value_new_null())), nullptr);
-            return;
-        }
-
-        cairo_surface_flush(surface);
-
-        cairo_status_t status;
-        guchar* png_data = nullptr;
-        gsize png_size = 0;
-
-        GdkPixbuf* pixbuf = gdk_pixbuf_get_from_surface(
-            surface, 0, 0,
-            cairo_image_surface_get_width(surface),
-            cairo_image_surface_get_height(surface)
-        );
-
-        if (pixbuf) {
-            gchar* buffer = nullptr;
-            gsize buffer_size = 0;
-            gboolean saved = gdk_pixbuf_save_to_buffer(
-                pixbuf, &buffer, &buffer_size, "png", nullptr, nullptr
-            );
-            if (saved && buffer && buffer_size > 0) {
-                png_data = (guchar*)g_malloc(buffer_size);
-                memcpy(png_data, buffer, buffer_size);
-                png_size = buffer_size;
-                g_free(buffer);
-            }
-            g_object_unref(pixbuf);
-        }
-
-        cairo_surface_destroy(surface);
-
-        if (png_data && png_size > 0) {
-            g_autoptr(FlValue) fl_data = fl_value_new_uint8_list(png_data, png_size);
-            fl_method_call_respond(method_call, FL_METHOD_RESPONSE(fl_method_success_response_new(fl_data)), nullptr);
-            g_free(png_data);
-        } else {
-            fl_method_call_respond(method_call, FL_METHOD_RESPONSE(fl_method_success_response_new(fl_value_new_null())), nullptr);
-        }
+        webkit_web_view_get_snapshot(WEBKIT_WEB_VIEW(self->web_view),
+                                     WEBKIT_SNAPSHOT_REGION_VISIBLE,
+                                     WEBKIT_SNAPSHOT_OPTIONS_NONE,
+                                     nullptr,
+                                     on_screenshot_ready,
+                                     g_object_ref(method_call));
         return;
     } else {
         fl_method_call_respond(method_call, FL_METHOD_RESPONSE(fl_method_not_implemented_response_new()), nullptr);

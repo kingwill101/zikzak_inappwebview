@@ -1,6 +1,6 @@
 #include "include/zikzak_inappwebview_linux/zikzak_inappwebview_linux_plugin.h"
 
-#include <zikzak_inappwebview_linux/in_app_web_view_flutter_plugin.h>
+#include "include/zikzak_inappwebview_linux/in_app_web_view_flutter_plugin.h"
 
 #include <flutter_linux/flutter_linux.h>
 #include <gtk/gtk.h>
@@ -119,6 +119,9 @@ static void zikzak_inappwebview_linux_plugin_dispose(GObject *object) {
   if (self->web_views) {
     g_hash_table_destroy(self->web_views);
   }
+  if (self->registrar) {
+    g_object_unref(self->registrar);
+  }
   G_OBJECT_CLASS(zikzak_inappwebview_linux_plugin_parent_class)
       ->dispose(object);
 }
@@ -146,7 +149,7 @@ void zikzak_inappwebview_linux_plugin_register_with_registrar(
   ZikzakInappwebviewLinuxPlugin *plugin = ZIKZAK_INAPPWEBVIEW_LINUX_PLUGIN(
       g_object_new(zikzak_inappwebview_linux_plugin_get_type(), nullptr));
 
-  plugin->registrar = registrar;
+  plugin->registrar = FL_PLUGIN_REGISTRAR(g_object_ref(registrar));
 
   g_autoptr(FlStandardMethodCodec) codec = fl_standard_method_codec_new();
   g_autoptr(FlMethodChannel) channel = fl_method_channel_new(

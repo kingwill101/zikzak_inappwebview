@@ -21,7 +21,9 @@ class LinuxInAppWebViewWidget extends PlatformInAppWebViewWidget {
 
   @override
   T controllerFromPlatform<T>(PlatformInAppWebViewController controller) {
-    // ignore: unnecessary_cast
+    if (params.controllerFromPlatform != null) {
+      return params.controllerFromPlatform!(controller) as T;
+    }
     return controller as T;
   }
 }
@@ -86,8 +88,14 @@ class _LinuxInAppWebViewState extends State<_LinuxInAppWebView> {
       findInteractionController.setupMethodHandler();
     }
 
+    if (widget.params.initialUrlRequest != null) {
+      _controller!.loadUrl(urlRequest: widget.params.initialUrlRequest!);
+    }
+
     if (widget.params.onWebViewCreated != null) {
-      widget.params.onWebViewCreated!(_controller!);
+      widget.params.onWebViewCreated!(
+        widget.params.controllerFromPlatform?.call(_controller!) ?? _controller!,
+      );
     }
   }
 
